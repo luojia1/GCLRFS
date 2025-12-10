@@ -1,0 +1,108 @@
+function [X_new,obj]=GCLRFS(X, A0, AU,c, alpha, beta, theta,p)
+[d,n] = size(X); 
+NIter = 30;
+T=1/d*eye(d);
+% W=abs(rand(d,c));
+% V=abs(rand(c,n));
+% summ = zeros(NITER,1); 
+S = zeros(size(A0));
+SU = zeros(size(AU));
+
+%========data graph with CLR===========
+A0 = A0 - diag(diag(A0));
+num = size(A0, 1);
+A10 = (A0 + A0') / 2;
+D10 = diag(sum(A10));
+L0 = D10 - A10;           
+% automatically determine the cluster number
+[F0, ~, evs] = eig1(L0, num, 0);
+V = F0(1:c,:);
+% if sum(evs(1:c+1)) < zr
+%     [clusternum, y]=graphconncomp(sparse(A0)); y = y';
+% end
+% if sum(evs(1:c)) < zr
+%     [clusternum, y]=graphconncomp(sparse(A10));
+%     y = y';
+%     S = A0;
+%     return;
+% end
+%========feature graph with CLR========
+AU = AU-diag(diag(AU));  
+dim = size(AU,1);  
+A1U = (AU+AU')/2;
+D1U = diag(sum(A1U));
+L0U = D1U - A1U;  
+% automatically determine the cluster number
+[F0U, ~, evsU]=eig1(L0U, dim, 0); 
+W= F0U(:,1:c);
+% 
+% if sum(evsU(1:c+1)) < zr
+%     [clusternum, y]=graphconncomp(sparse(A10)); y = y';
+% end
+% if sum(evsU(1:c)) < zr
+%     [clusternum, y]=graphconncomp(sparse(A1U));
+%     y = y';
+%     SU = AU;
+%     return;
+% end
+%=============data graph S updata===========
+for iter = 1:NIter
+    dist = L2_distance_1(V,V);   
+    for i=1:num
+        idxa0 = 1:num;
+        di = dist(i,idxa0);
+        ad = A0(i,idxa0)-0.25*beta*di; 
+        S(i,idxa0) = EProjSimplex_new(ad);
+    end
+    A = S;
+    A = (A+A')/2;
+    D = diag(sum(A));
+    L = D-A;  
+    [V1, ~, ev]=eig1(L, c, 0);
+    V=V1';
+%===========feature graph SU updata=========
+    distU = L2_distance_1(W',W');
+    for i=1:dim
+        idxa0 = 1:dim;
+        diu = distU(i,idxa0);
+        ad = AU(i,idxa0)-0.25*alpha*diu; 
+        SU(i,idxa0) = EProjSimplex_new(ad);
+    end
+    AU = SU;
+    AU = (AU+AU')/2;
+    DU = diag(sum(AU));
+    LU = DU-AU;
+    [W, ~, evU]=eig1(LU, c, 0);
+
+%===========================更新W,V,T==============================
+    Z=W'*T*X-V;
+    Hi=sqrt(sum(Z'.*Z',2)+eps);
+    h=0.5./Hi;
+    H=diag(h);
+    W=W.*(T*X*H'*V'+alpha*(AU*W))./(T*X*H*X'*T'*W+alpha*(DU*W)+W);
+    T=T.*(W*V*H*X')./(W*W'*T*X*H*X');
+    V=V.*(W'*T*X*H'+beta*V*A)./(V*H+beta*V*D+(theta./(1+V))+V);
+    V=max(0,V);
+    % ==============================================================
+    obj(1,iter)=norm(S-A,'fro')^2+norm(SU-AU,'fro')^2;
+    obj(2,iter)=alpha*trace(W'*LU*W)+beta*trace(V*L*V');
+    obj(3,iter)=trace(W'*T*X*H*X'*T'*W-2*V*H*X'*T'*W+V*H*V');
+    obj(4,iter)= theta*sum(sum(log(V+1)))+trace(W'*W-eye(c))+trace(V*V'-eye(c));
+  
+    objsum(iter)=sum(obj(:,iter));
+%     score= sqrt(sum(W.*W,2));
+%     [~, idx] = sort(score,'descend');
+%     % X=X';
+%     X_new = X (idx(1:p),:);
+   
+    if iter>2
+        if abs(objsum(iter)-objsum(iter-1))<1e-6
+            break
+        end
+    end
+end
+score= sqrt(sum(W.*W,2));
+[~, idx] = sort(score,'descend');
+% X=X';
+X_new = X(idx(1:p),:);
+end
